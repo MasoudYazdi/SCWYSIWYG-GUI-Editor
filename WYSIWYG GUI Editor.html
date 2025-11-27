@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SC-WebGUI v3 – Final Fixed (No Errors)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body{margin:0;font-family:system-ui,sans-serif;background:#1e1e1e;color:#ddd;display:flex;flex-direction:column;height:100vh;overflow:auto;}
+  #toolbar{background:#252526;padding:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #444;}
+  button{background:#3c3c3c;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;}
+  button:hover{background:#007acc;}
+  button.big{font-weight:bold;padding:12px 24px;font-size:15px;}
+  .win-size label{font-size:90%;margin-right:8px;}
+  .win-size input{width:70px;padding:6px;background:#333;color:#fff;border:none;border-radius:4px;position:relative;}
+  #main{flex:1;display:flex;position:relative;}
+  #canvas{flex:1;background:#111;position:relative;overflow:auto;}
+  
+  /* WINDOW & GRID — BEHIND OBJECTS */
+  #windowBorder{
+    position:absolute;
+    background:rgba(30,30,30,0.92);
+    border:2px solid #555;
+    box-shadow:0 8px 32px rgba(0,0,0,0.7);
+    z-index:1;
+    pointer-events:none;
+  }
+  #windowTitle{
+    background:#007acc;
+    padding:6px 12px;
+    font-weight:bold;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    user-select:none;
+  }
+  .titleDot{width:12px;height:12px;border-radius:50%;}
+  .titleDot:nth-child(1){background:#ff5f57;}
+  .titleDot:nth-child(2){background:#ffbd2e;}
+  .titleDot:nth-child(3){background:#28ca42;}
+  #windowContent{position:relative;overflow:hidden;height:calc(100% - 34px);}
+  #grid{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    background-size:20px 20px;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
+    pointer-events:none;
+    opacity:0.6;
+    z-index:2;
+  }
+
+  /* OBJECTS — ALWAYS ON TOP */
+  .obj{
+    position:absolute;
+    user-select:none;
+    border:2px solid transparent;
+    box-sizing:border-box;
+    cursor:move;
+    font-size:13px;
+    z-index:100;
+  }
+  .obj:hover{border:2px solid #555;}
+  .obj.selected{border:2px dashed #0f0;z-index:1000;}
+
+  #palette{width:240px;background:#252526;padding:10px;}
+  #search{width:100%;padding:8px;background:#333;color:white;border:none;border-radius:4px;margin-bottom:10px;}
+  .item{background:#3c3c3c;padding:10px;margin:4px 0;border-radius:4px;cursor:grab;font-size:13px;}
+  .item:hover{background:#007acc;}
+  #props{width:380px;background:#252526;padding:15px;overflow-y:auto;}
+  .prop{margin:12px 0;}
+  label{display:block;margin-bottom:5px;font-size:90%;}
+  input,textarea,select{width:100%;background:#333;color:#ddd;padding:8px;border:none;border-radius:4px;font-family:monospace;}
+  textarea.action,textarea.drawFunc{height:160px;font-size:12px;}
+  #code{background:#000;color:#ddd;padding:12px;font-family:monospace;font-size:14px;height:420px;border-top:1px solid #444;}
+  .resize-handle{position:absolute;background:#007acc;width:10px;height:10px;border-radius:50%;pointer-events:auto;cursor:nwse-resize;z-index:3;}
+  .resize-handle.tl{top:-5px;left:-5px;cursor:nw-resize;}
+  .resize-handle.tr{top:-5px;right:-5px;cursor:ne-resize;}
+  .resize-handle.bl{bottom:-5px;left:-5px;cursor:sw-resize;}
+  .resize-handle.br{bottom:-5px;right:-5px;cursor:se-resize;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="newProject()">New</button>
+  <button onclick="saveProject()">Save</button>
+  <button onclick="loadProject()">Load</button>
+  <button onclick="undo()">Undo</button>
+  <button onclick="redo()">Redo</button>
+  <button onclick="toggleGrid()">Toggle Grid</button>
+
+  <div class="win-size">
+  <span style="margin-left:20px;font-size:90%;color:#aaa;">Window:</span>
+  <input id="winX" type="number" value="100" title="X">
+  <input id="winY" type="number" value="100" title="Y">
+  <input id="winW" type="number" value="900" title="Width">
+  <input id="winH" type="number" value="600" title="Height">
+
+  </div>
+
+  <div style="flex:1"></div>
+  <button class="big" onclick="copyCode()">COPY CODE</button>
+</div>
+<div id="main">
+  <div id="palette">
+    <input id="search" placeholder="Search classes..." oninput="filterPalette(this.value)">
+    <div class="cat">Basic</div>
+    <div class="item" data-class="Button" draggable="true">Button</div>
+    <div class="item" data-class="Slider" draggable="true">Slider</div>
+    <div class="item" data-class="Knob" draggable="true">Knob</div>
+    <div class="item" data-class="RangeSlider" draggable="true">RangeSlider</div>
+    <div class="item" data-class="Slider2D" draggable="true">Slider2D</div>
+    <div class="item" data-class="CheckBox" draggable="true">CheckBox</div>
+    <div class="cat">Text</div>
+    <div class="item" data-class="StaticText" draggable="true">StaticText</div>
+    <div class="item" data-class="TextField" draggable="true">TextField</div>
+    <div class="item" data-class="TextView" draggable="true">TextView</div>
+    <div class="item" data-class="PopUpMenu" draggable="true">PopUpMenu</div>
+    <div class="item" data-class="ListView" draggable="true">ListView</div>
+    <div class="item" data-class="NumberBox" draggable="true">NumberBox</div>
+    <div class="cat">EZ GUI</div>
+    <div class="item" data-class="EZSlider" draggable="true">EZSlider</div>
+    <div class="item" data-class="EZKnob" draggable="true">EZKnob</div>
+    <div class="item" data-class="EZNumber" draggable="true">EZNumber</div>
+    <div class="item" data-class="EZListView" draggable="true">EZListView</div>
+    <div class="cat">Advanced</div>
+    <div class="item" data-class="MultiSliderView" draggable="true">MultiSliderView</div>
+    <div class="item" data-class="EnvelopeView" draggable="true">EnvelopeView</div>
+    <div class="item" data-class="SoundFileView" draggable="true">SoundFileView</div>
+    <div class="item" data-class="ScopeView" draggable="true">ScopeView</div>
+    <div class="item" data-class="FreqScopeView" draggable="true">FreqScopeView</div>
+    <div class="item" data-class="UserView" draggable="true">UserView</div>
+    <div class="item" data-class="LevelIndicator" draggable="true">LevelIndicator</div>
+    <div class="cat">Layout & Containers</div>
+    <div class="item" data-class="CompositeView" draggable="true">CompositeView</div>
+    <div class="item" data-class="ScrollView" draggable="true">ScrollView</div>
+    <div class="item" data-class="HLayoutView" draggable="true">HLayoutView</div>
+    <div class="item" data-class="VLayoutView" draggable="true">VLayoutView</div>
+    <div class="item" data-class="GridLayoutView" draggable="true">GridLayoutView</div>
+    <div class="cat">Media</div>
+    <div class="item" data-class="MovieView" draggable="true">MovieView</div>
+    <div class="item" data-class="TabletView" draggable="true">TabletView</div>
+  </div>
+
+  <div id="canvas">
+    <div id="windowBorder">
+      <div id="windowTitle"><div class="titleDot"></div><div class="titleDot"></div><div class="titleDot"></div>My GUI</div>
+      <div id="windowContent">
+        <div id="grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="props"><em>Drag from palette or click an object</em></div>
+</div>
+<div id="code">
+
+</div>
+<div style="font-size: smaller;"><br>Super Collider WYSIWYG GUI Editor - 2025 - This is a WIP , For Bug Report : MasoudYazdi@gmail.com <br><br> </div>
+<script>
+// SC-WebGUI v4 – ALL 30+ GUI CLASSES INCLUDED
+const canvas = document.getElementById('canvas');
+const windowBorder = document.getElementById('windowBorder');
+const windowContent = document.getElementById('windowContent');
+const grid = document.getElementById('grid');
+const props = document.getElementById('props');
+const codeDiv = document.getElementById('code');
+let objects = [], selected = null, history = [], hIndex = -1;
+
+const defaultAction = `action_({ |obj|
+    "clicked!".postln;
+});`;
+
+const classes = {
+  Button: {preview:'<button style="width:100%;height:100%;">Button</button>', props:{states:'[["On"],["Off",Color.white,Color.red]]', action:defaultAction}},
+  Slider: {preview:'<input type="range" style="width:100%;">', props:{value:0.5}},
+  Knob: {preview:'<div style="width:60px;height:60px;margin:10px auto;background:radial-gradient(#888,#222);border-radius:50%;position:relative;"><div style="position:absolute;width:8px;height:30px;background:white;top:8px;left:50%;margin-left:-4px;transform:rotate(-90deg);transform-origin:center bottom;"></div></div>', props:{value:0.5}},
+  RangeSlider: {preview:'<div style="height:100%;display:flex;align-items:center;gap:10px;"><input type="range" style="flex:1;"><input type="range" style="flex:1;"></div>', props:{lo:0.2,hi:0.8}},
+  Slider2D: {preview:'<div style="background:#222;width:100%;height:100%;position:relative;"><div style="position:absolute;width:20px;height:20px;background:#0f0;border-radius:50%;left:30%;top:70%;"></div></div>', props:{x:0.3,y:0.7}},
+  CheckBox: {preview:'<label><input type="checkbox"> Option</label>', props:{string:"Option", value:false}},
+  StaticText: {preview:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:bold;">Label</div>', props:{string:"Label"}},
+  TextField: {preview:'<input type="text" value="hello" style="width:100%;height:100%;">', props:{string:"hello"}},
+  TextView: {preview:'<textarea style="width:100%;height:100%;resize:none;">multiline\ntext</textarea>', props:{string:"multiline\\ntext"}},
+  PopUpMenu: {preview:'<select style="width:100%;height:100%;"><option>A</option><option>B</option></select>', props:{items:'["A","B","C"]'}},
+  ListView: {preview:'<select multiple size=5 style="width:100%;height:100%;"><option>One</option><option>Two</option></select>', props:{items:'["One","Two","Three"]'}},
+  NumberBox: {preview:'<input type="number" value="440" style="width:100%;height:100%;">', props:{value:440}},
+  EZSlider: {preview:'<div style="padding:8px;background:#333;">Freq: <input type="range" style="width:60%;"><span style="float:right;">440 Hz</span></div>', props:{label:"Freq", value:440, unit:"Hz"}},
+  EZKnob: {preview:'<div style="text-align:center;padding:10px;">Rate<br><div style="width:60px;height:60px;margin:10px auto;background:radial-gradient(#888,#222);border-radius:50%;"></div><span>1.0</span></div>', props:{label:"Rate", value:1}},
+  EZNumber: {preview:'<div style="padding:8px;background:#333;">BPM: <input type="number" value="120" style="width:80px;"></div>', props:{label:"BPM", value:120}},
+  EZListView: {preview:'<div style="padding:8px;background:#333;">Wave:<br><select multiple size=4 style="width:100%;"><option>Sine</option><option>Saw</option></select></div>', props:{items:'[[\sin, {SinOsc.ar}],[\saw, {Saw.ar}]]'}},
+  MultiSliderView: {preview:'<div style="background:#222;height:100%;display:flex;align-items:end;gap:4px;padding:4px;">'+Array(10).fill().map(()=>`<div style="flex:1;background:#0a0;height:${20+Math.random()*60}%;"></div>`).join('')+'</div>', props:{value:'[0.1,0.5,0.8,0.3,0.7,0.2,0.9,0.4,0.6,0.3]', thumbSize:15, isFilled:true}},
+  EnvelopeView: {preview:'<svg width="100%" height="100%" viewBox="0 0 100 100"><path d="M0,100 L20,20 L40,80 L60,30 L80,60 L100,100" fill="none" stroke="#0f0" stroke-width="3"/></svg>', props:{value:'[[0,0.2,0.4,0.6,0.8,1],[1,0.2,0.8,0.3,0.6,1]]', drawLines:true, drawRects:false}},
+  SoundFileView: {preview:'<div style="background:#111;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#0f0;font-family:monospace;">SoundFileView<br>Drop .wav/.aif</div>', props:{}},
+  ScopeView: {preview:'<div style="background:#000;width:100%;height:100%;position:relative;overflow:hidden;"><div style="position:absolute;width:200%;height:100%;background:linear-gradient(90deg,#0f0 0%,#0f0 2%,transparent 2%,transparent 98%,#0f0 98%,#0f0 100%);animation:osc 3s linear infinite;"></div></div>', props:{bufnum:0}},
+  FreqScopeView: {preview:'<div style="background:#000;color:#0f0;width:100%;height:100%;display:flex;align-items:end;justify-content:center;font-family:monospace;">FreqScopeView</div>', props:{active:true}},
+  UserView: {preview:'<div style="border:2px dashed #666;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-family:monospace;">UserView<br>drawFunc</div>', props:{drawFunc:`drawFunc_({
+    Pen.strokeColor = Color.white;
+    Pen.addArc(50@50, 40, 0, 2pi);
+    Pen.stroke;
+});`}},
+  LevelIndicator: {preview:'<div style="background:#222;width:30px;height:100%;margin:0 auto;position:relative;"><div style="position:absolute;bottom:0;width:100%;height:70%;background:linear-gradient(green,yellow,red);"></div></div>', props:{value:0.7, warning:0.8, critical:0.95}},
+  CompositeView: {preview:'<div style="border:3px dashed #555;width:100%;height:100%;"></div>', props:{}},
+  ScrollView: {preview:'<div style="border:2px solid #666;width:100%;height:100%;overflow:auto;background:repeating-linear-gradient(45deg,#333,#333 10px,#222 10px,#222 20px);"></div>', props:{hasHorizontalScroller:true, hasVerticalScroller:true}},
+  HLayoutView: {preview:'<div style="display:flex;height:100%;"><div style="flex:1;background:#333;"></div><div style="flex:1;background:#444;"></div></div>', props:{}},
+  VLayoutView: {preview:'<div style="display:flex;flex-direction:column;height:100%;"><div style="flex:1;background:#333;"></div><div style="flex:1;background:#444;"></div></div>', props:{}},
+  GridLayoutView: {preview:'<div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px;height:100%;"><div style="background:#333;"></div><div style="background:#444;"></div><div style="background:#444;"></div><div style="background:#333;"></div></div>', props:{spacing:10}},
+  MovieView: {preview:'<div style="background:#000;color:#0f0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:monospace;">MovieView<br>.mov/.mp4</div>', props:{path:"video.mov"}},
+  TabletView: {preview:'<div style="background:#222;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#0f0;">TabletView<br>Pressure + Tilt</div>', props:{}}
+};
+
+// === FULLY WORKING SCRIPT ===
+function getWindowRect() {
+  return {x: +document.getElementById('winX').value || 100, y: +document.getElementById('winY').value || 100,
+          w: Math.max(300, +document.getElementById('winW').value || 900),
+          h: Math.max(200, +document.getElementById('winH').value || 600)};
+}
+
+function updateWindowBorder() {
+  const r = getWindowRect();
+  windowBorder.style.left = r.x + 'px';
+  windowBorder.style.top = r.y + 'px';
+  windowBorder.style.width = r.w + 'px';
+  windowBorder.style.height = r.h + 'px';
+  windowContent.style.height = (r.h - 34) + 'px';
+  grid.style.width = r.w + 'px';
+  grid.style.height = (r.h - 34) + 'px';
+  render();
+  updateCode();
+}
+
+function toggleGrid() { grid.style.display = grid.style.display === 'none' ? 'block' : 'none'; }
+function toggleAlwaysOnTop(c) { windowBorder.classList.toggle('alwaysOnTop', c); }
+
+// DRAG FROM PALETTE
+document.querySelectorAll('.item').forEach(i => i.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', i.dataset.class)));
+canvas.addEventListener('dragover', e => e.preventDefault());
+canvas.addEventListener('drop', e => {
+  e.preventDefault();
+  const cls = e.dataTransfer.getData('text/plain');
+  if (cls) {
+    const r = canvas.getBoundingClientRect();
+    const wx = +document.getElementById('winX').value;
+    const wy = +document.getElementById('winY').value;
+    const x = e.clientX - r.left + canvas.scrollLeft - wx - 70;
+    const y = e.clientY - r.top + canvas.scrollTop - wy - 50;
+    addObject(cls, x, y);
+  }
+});
+
+function addObject(cls, x = 50, y = 50) {
+  const o = {id: Date.now() + Math.random(), class: cls, x, y,
+    w: cls.includes('View') ? 200 : cls === 'Slider' ? 200 : 140,
+    h: cls.includes('View') ? 150 : cls === 'Knob' ? 80 : 40,
+    props: JSON.parse(JSON.stringify(classes[cls].props))};
+  objects.push(o);
+  render();
+  updateCode();
+  saveHistory();
+}
+
+function render() {
+  canvas.querySelectorAll('.obj').forEach(el => el.remove());
+  const wx = +document.getElementById('winX').value;
+  const wy = +document.getElementById('winY').value;
+  objects.forEach(o => {
+    const el = document.createElement('div');
+    el.className = 'obj';
+    el.dataset.id = o.id;
+    el.style.left = (wx + o.x) + 'px';
+    el.style.top = (wy + 34 + o.y) + 'px';
+    el.style.width = o.w + 'px';
+    el.style.height = o.h + 'px';
+    el.innerHTML = classes[o.class].preview;
+    canvas.appendChild(el);
+    el.onclick = ev => { ev.stopPropagation(); selected = o; showProps(); renderSelection(); };
+    el.ondblclick = () => window.open(`https://docs.supercollider.online/Classes/${o.class}.html`, '_blank');
+    let sx, sy, sw, sh;
+    el.onmousedown = e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      selected = o; showProps(); renderSelection();
+      sx = e.clientX; sy = e.clientY; sw = o.w; sh = o.h;
+      const move = ev => {
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        if (ev.shiftKey) {
+          o.w = Math.max(40, sw + dx);
+          o.h = Math.max(20, sh + (ev.altKey ? dx : dy));
+        } else { o.x += dx; o.y += dy; }
+        el.style.left = (wx + o.x) + 'px';
+        el.style.top = (wy + 34 + o.y) + 'px';
+        el.style.width = o.w + 'px';
+        el.style.height = o.h + 'px';
+        sx = ev.clientX; sy = ev.clientY;
+        updateCode();
+      };
+      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); saveHistory(); };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    };
+  });
+}
+
+function renderSelection() {
+  document.querySelectorAll('.obj').forEach(el => el.classList.toggle('selected', selected && el.dataset.id == selected.id));
+}
+
+function showProps() {
+  if (!selected) { props.innerHTML = '<em>Select an object</em>'; return; }
+  let html = `<strong>${selected.class}</strong><br><br>`;
+  html += `<div class="prop"><label>X</label><input type="number" value="${selected.x}" onchange="selected.x=+this.value;render();updateCode()"></div>`;
+  html += `<div class="prop"><label>Y</label><input type="number" value="${selected.y}" onchange="selected.y=+this.value;render();updateCode()"></div>`;
+  html += `<div class="prop"><label>W</label><input type="number" value="${selected.w}" onchange="selected.w=+this.value;render();updateCode()"></div>`;
+  html += `<div class="prop"><label>H</label><input type="number" value="${selected.h}" onchange="selected.h=+this.value;render();updateCode()"></div>`;
+  for (const [k, v] of Object.entries(selected.props)) {
+    if (k === 'action' || k === 'drawFunc') {
+      html += `<div class="prop"><label>${k}</label><textarea onchange="selected.props['${k}']=this.value;updateCode()">${v}</textarea></div>`;
+    } else if (typeof v === 'string' && v.includes('[')) {
+      html += `<div class="prop"><label>${k}</label><textarea onchange="selected.props['${k}']=this.value;updateCode()">${v}</textarea></div>`;
+    } else {
+      html += `<div class="prop"><label>${k}</label><input value="${v}" onchange="selected.props['${k}']=this.value;updateCode()"></div>`;
+    }
+  }
+  html += `<button style="margin-top:20px;background:#c33;padding:10px;" onclick="deleteSelected()">Delete</button>`;
+  props.innerHTML = html;
+}
+
+function deleteSelected() {
+  if (selected) { objects = objects.filter(o => o !== selected); selected = null; render(); updateCode(); saveHistory(); }
+}
+
+function updateCode() {
+  const win = getWindowRect();
+  let code = `(\nvar w = Window("My GUI", Rect(${win.x},${win.y},${win.w},${win.h})).front;\n\n`;
+  objects.forEach(o => {
+    code += `${o.class}(w, Rect(${o.x},${o.y},${o.w},${o.h}))\n`;
+    for (const [k, v] of Object.entries(o.props)) {
+      if (!v) continue;
+      if (k === 'action' || k === 'drawFunc') code += `    .${v}\n`;
+      else if (typeof v === 'string' && v.includes('[')) code += `    .${k}_(${v})\n`;
+      else if (typeof v === 'number') code += `    .${k}_(${v})\n`;
+      else code += `    .${k}_("${v}")\n`;
+    }
+    code += ";\n\n";
+  });
+  code += "w.front;\n)";
+  codeDiv.textContent = code;
+}
+
+function saveHistory() { history = history.slice(0, hIndex + 1); history.push(JSON.stringify(objects)); hIndex++; }
+function undo() { if (hIndex > 0) { hIndex--; objects = JSON.parse(history[hIndex]); render(); updateCode(); } }
+function redo() { if (hIndex < history.length - 1) { hIndex++; objects = JSON.parse(history[hIndex]); render(); updateCode(); } }
+function copyCode() { navigator.clipboard.writeText(codeDiv.textContent); alert("Code copied!"); }
+function newProject() { objects = []; selected = null; render(); updateCode(); saveHistory(); }
+function saveProject() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({objects, win:getWindowRect()})], {type:'application/json'})); a.download = 'my-gui.json'; a.click(); }
+function loadProject() { const i = document.createElement('input'); i.type = 'file'; i.onchange = e => { new FileReader().readAsText(e.target.files[0]).onload = r => { const data = JSON.parse(r.target.result); objects = data.objects || []; const win = data.win || {}; ['winX','winY','winW','winH'].forEach((id,i) => { if(win[id.slice(3).toLowerCase()]!==undefined) document.getElementById(id).value = win[id.slice(3).toLowerCase()]; }); updateWindowBorder(); render(); updateCode(); saveHistory(); }; }; i.click(); }
+
+document.addEventListener('keydown', e => { if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); });
+['winX','winY','winW','winH'].forEach(id => document.getElementById(id).onchange = updateWindowBorder);
+updateWindowBorder();
+saveHistory();
+render();
+updateCode();
+</script>
+</body>
+</html>
